@@ -97,13 +97,13 @@ class PhotoDump:
         try:
             os.mkdir("dump_{}".format(folder_name))
         except OSError as e:
-            print("Проблемы с созданием папки 'dump_{}'\n".format(folder_name))
-            print("Ошибка {}".format(e))
+            print("Oops! Creating folder 'dump_{}' failed \n".format(folder_name))
+            print("Error {}".format(e))
 
         if os.path.exists("dump_{}".format(folder_name)):
             os.chdir("dump_{}".format(folder_name))
         else:
-            print("Не удалось создать папку\n")
+            print("Folder doesn't exist\n")
             exit()
 
 
