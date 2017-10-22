@@ -81,6 +81,7 @@ class PhotoDump:
                 for link in links:
                     try:
                         urlretrieve(link, "{}.jpg".format(str(image_number)))
+                        sleep(1)
                         image_number += 1
                     except Exception as e:
                         print('Error!: {}'.format(e))
