@@ -2,56 +2,66 @@ import vk_api
 import os
 from urllib.request import urlretrieve
 from time import sleep
-
 """
-by Konstantin Peskov
-https://github.com/likanovkos
-
-This script downloads all photos from vk.com dialog, or group dialog
-Steps:
-1) Create folder
-2) Parse photos links
-3) Downloads pics  
- 
+created by Likanov
 """
+#######################################
+#            oh, hello      ____      #
+#  ________________________/ O  \___/ #
+# <%%%%%%%%%%%%%%%%%%%%%%%%_____/   \ #
+#######################################
+
+PATH = os.getcwd()
 
 
 class PhotoDump:
-    def __init__(self, login, password):
+    def __init__(self, login=None, password=None, dialog=None):
+        # init values
         self.login = login
         self.password = password
-        self.vk_session = vk_api.VkApi(login, password)
-        self.timeout = 3
-        self.api = self.vk_session.get_api()
+        self.dialog = dialog
+        self.api = None
 
-    def authorization(self):
+        # Options
+        self.timeout = 1
+
+    def auth_process(self):
         try:
-            self.vk_session.auth()
+            session = vk_api.VkApi(self.login, self.password)
+            session.auth()
+            self.api = session.get_api()
         except vk_api.AuthError as error_msg:
-            print(error_msg)
-            return
+            raise error_msg
 
-    def make_request(self, peer_id, media_type, count, start_from):
+    def make_request(self, pagination=None):
+        """
+        Этот метод делает завпрос и возвращает json с информацией о вложении(в данном случае, фотки)
+        TODO:
+        Добавить обработчик исключений, пока не ясно, какие исключения наследуются от базового класса
 
-        if start_from:
-            return self.api.messages.getHistoryAttachments(
-                peer_id=peer_id,
-                media_type=media_type,
-                count=count,
-                start_from=start_from
-            )
+        :param pagination: пагинация
+        :return: json
+        """
+
+        kwargs = {
+            'peer_id': self.dialog,
+            'media_type': 'photo',
+            'count': 200,
+        }
+        if self.api:
+            if pagination:
+                kwargs.update(start_from=pagination)
+            # между запросами делам пазу
+            sleep(self.timeout)
+            return self.api.messages.getHistoryAttachments(**kwargs)
         else:
-            return self.api.messages.getHistoryAttachments(
-                peer_id=peer_id,
-                media_type=media_type,
-                count=count,
-            )
+            raise vk_api.AuthError('Сессия устарела, либо не существует')
 
-    def load_photo_links(self, dialog_id):
+    def load_photo_links(self):
 
         links = []
-        # get all of pics urls
-        raw = self.make_request(dialog_id, 'photo', 200, start_from=None)
+        # забираем все урлы картинок
+        raw = self.make_request()
         next_page = raw.get('next_from')
 
         while next_page:
@@ -67,13 +77,15 @@ class PhotoDump:
                     continue
 
             sleep(self.timeout)
-            raw = self.make_request(dialog_id, 'photo', 200, start_from=next_page)
+            raw = self.make_request(pagination=next_page)
             next_page = raw.get('next_from')
 
         return links
 
-    def downloads_pictures(self, from_dialog):
-        links = self.load_photo_links(from_dialog)
+    def downloads_pictures(self):
+        self.create_directory()
+
+        links = self.load_photo_links()
         if links:
             image_number = 0
             print('Download Progress: \n')
@@ -92,33 +104,48 @@ class PhotoDump:
                     ))
                 return f.close()
 
-    @staticmethod
-    def create_directory(folder_name):
-
+    def create_directory(self):
+        # Разбиваем на папки с логинами, в которых храняться под папки с идентификатором диалога
+        # Всегда начинаем с основной папки
+        os.chdir(PATH)
         try:
-            os.mkdir("dump_{}".format(folder_name))
+            # Если папка уже существует, переходим по данному пути и создаем там подпапку с идентификатором диалога
+            if os.path.exists(self.login):
+                os.chdir(self.login)
+                if os.path.exists(self.dialog):
+                    os.chdir(self.dialog)
+                else:
+                    os.mkdir(self.dialog)
+                    os.chdir(self.dialog)
+            else:
+                # иначе создаем папку для нового пользователя
+                os.mkdir(self.login)
+                os.chdir(self.login)
+                os.mkdir(self.dialog)
+                os.chdir(self.dialog)
+
         except OSError as e:
-            print("Oops! Creating folder 'dump_{}' failed \n".format(folder_name))
+            # немного крос платформенности
+            if os.name == 'posix':
+                current_path = os.getcwd().split('/')[-1]
+            elif os.name == 'nt':
+                current_path = os.getcwd().split('\\')[-1]
+            else:
+                raise OSError('Не делал под другие оси')
+
+            print("Oops! Creating folder at {} failed \n".format(current_path))
             print("Error {}".format(e))
 
-        if os.path.exists("dump_{}".format(folder_name)):
-            os.chdir("dump_{}".format(folder_name))
-        else:
-            print("Folder doesn't exist\n")
-            exit()
-
-
-def run():
-    # setting of parse
-    login, password = 'mylogin', 'mypassword'
-    # you can get this argument from url of your dialog, example https://vk.com/im?sel="HEREYOUID"
-    dialog_id = 'myid'
-
-    main = PhotoDump(login, password)
-    main.create_directory('myfolder')
-    main.authorization()
-    main.downloads_pictures(from_dialog=dialog_id)
+    def main(self):
+        self.auth_process()
+        self.downloads_pictures()
 
 
 if __name__ is '__main__':
-    run()
+    kwargs = {
+        'login': '',
+        'password': '',
+        'dialog': ''
+    }
+    download = PhotoDump(**kwargs)
+    download.main()
